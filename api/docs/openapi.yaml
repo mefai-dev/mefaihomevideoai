@@ -1,0 +1,269 @@
+openapi: 3.1.0
+info:
+  title: SUPER BCS Image Generation API
+  version: 0.1.0
+  description: |
+    Pull-based image-generation pipeline. Public endpoints accept user submissions
+    (Turnstile-gated) and surface job state. Worker endpoints are consumed by an
+    isolated GPU worker that polls outbound, claims jobs, and posts results back.
+  license:
+    name: Apache-2.0
+servers:
+  - url: https://api.example.com
+    description: Production
+  - url: http://127.0.0.1:8210
+    description: Local dev
+
+tags:
+  - name: public
+    description: User-facing endpoints (rate-limited, Turnstile-protected)
+  - name: worker
+    description: GPU worker endpoints (Bearer token, IP allowlist)
+  - name: ops
+    description: Health, readiness, metrics
+
+security: []
+
+paths:
+  /api/superbcs/healthz:
+    get:
+      tags: [ops]
+      summary: Liveness probe
+      responses:
+        '200': { description: OK }
+
+  /api/superbcs/readyz:
+    get:
+      tags: [ops]
+      summary: Readiness probe (DB + media dir)
+      responses:
+        '200': { description: Ready }
+        '503': { description: Not ready }
+
+  /api/superbcs/jobs:
+    post:
+      tags: [public]
+      summary: Submit a new image-generation job
+      description: |
+        Creates a queued job. Requires a valid Cloudflare Turnstile token.
+        Subject to per-IP rate limit (5/hour free tier).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [prompt, motion_preset, token_symbol, turnstile_token]
+              properties:
+                prompt:
+                  type: string
+                  minLength: 3
+                  maxLength: 500
+                motion_preset:
+                  type: string
+                  enum: [PUMP_IT, DUMP_IT, BULL_RUN, BEAR_MARKET, RUGPULL,
+                         DIAMOND_HANDS, MOON_SHOT, WHALE_ALERT, FOMO,
+                         LIQUIDATION, HODL, TO_THE_MOON, HYPE_TRAIN,
+                         FIRE_SALE, BLOCKCHAIN, GOLDEN_CROSS]
+                token_symbol:
+                  type: string
+                  pattern: '^[A-Z0-9]{2,12}$'
+                seed:
+                  type: integer
+                  nullable: true
+                turnstile_token:
+                  type: string
+                input_image:
+                  type: string
+                  format: binary
+                  description: Optional reference image (max 8 MB, jpeg/png/webp)
+      responses:
+        '202':
+          description: Job accepted and queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/TurnstileFailed' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '422': { $ref: '#/components/responses/UnsafePrompt' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/superbcs/jobs/{job_id}:
+    get:
+      tags: [public]
+      summary: Poll job status
+      parameters:
+        - { in: path, name: job_id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Current job state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobStatus' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/superbcs/media/{media_id}:
+    get:
+      tags: [public]
+      summary: Fetch generated media (image)
+      parameters:
+        - { in: path, name: media_id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Image bytes
+          content:
+            image/png: { schema: { type: string, format: binary } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/superbcs/worker/claim:
+    get:
+      tags: [worker]
+      summary: Worker claims next queued job (atomic)
+      security:
+        - WorkerBearer: []
+      responses:
+        '200':
+          description: Job to process
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkerJob' }
+        '204':
+          description: No work available
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/IPNotAllowed' }
+
+  /api/superbcs/worker/heartbeat:
+    post:
+      tags: [worker]
+      summary: Worker liveness ping (every 60s)
+      security:
+        - WorkerBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Heartbeat' }
+      responses:
+        '204': { description: Acknowledged }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/superbcs/worker/result:
+    post:
+      tags: [worker]
+      summary: Worker uploads generated image
+      security:
+        - WorkerBearer: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [job_id, status]
+              properties:
+                job_id: { type: string, format: uuid }
+                status: { type: string, enum: [done, error] }
+                error_text: { type: string, nullable: true }
+                duration_ms: { type: integer }
+                vram_peak_mb: { type: integer }
+                image_sha256: { type: string }
+                image:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Result accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/UnsafeImage' }
+
+components:
+  securitySchemes:
+    WorkerBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+
+  schemas:
+    JobCreated:
+      type: object
+      required: [job_id, status, queue_position]
+      properties:
+        job_id: { type: string, format: uuid }
+        status: { type: string, enum: [queued] }
+        queue_position: { type: integer, minimum: 1 }
+        poll_after_seconds: { type: integer, default: 3 }
+    JobStatus:
+      type: object
+      required: [job_id, status, created_at]
+      properties:
+        job_id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [queued, claimed, running, done, error, cancelled]
+        media_url: { type: string, nullable: true }
+        media_id: { type: string, format: uuid, nullable: true }
+        error_text: { type: string, nullable: true }
+        duration_ms: { type: integer, nullable: true }
+        created_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time, nullable: true }
+    WorkerJob:
+      type: object
+      required: [job_id, prompt, motion_preset, token_symbol]
+      properties:
+        job_id: { type: string, format: uuid }
+        prompt: { type: string }
+        motion_preset: { type: string }
+        token_symbol: { type: string }
+        seed: { type: integer, nullable: true }
+        input_image_url: { type: string, nullable: true }
+        deadline_at: { type: string, format: date-time }
+    Heartbeat:
+      type: object
+      required: [worker_id, vram_free_mb, queue_capacity]
+      properties:
+        worker_id: { type: string }
+        vram_free_mb: { type: integer }
+        queue_capacity: { type: integer }
+        version: { type: string }
+    Error:
+      type: object
+      required: [error, request_id]
+      properties:
+        error: { type: string }
+        detail: { type: string, nullable: true }
+        request_id: { type: string }
+
+  responses:
+    BadRequest:
+      description: Invalid input
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFound:
+      description: Resource not found
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    PayloadTooLarge:
+      description: Input image exceeds 8 MB
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    RateLimited:
+      description: Per-IP rate limit hit
+      headers:
+        Retry-After: { schema: { type: integer } }
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    TurnstileFailed:
+      description: Turnstile verification failed
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    UnsafePrompt:
+      description: Prompt rejected by content policy
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    UnsafeImage:
+      description: Generated image rejected by safety checker
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    IPNotAllowed:
+      description: Worker IP not in allowlist
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }

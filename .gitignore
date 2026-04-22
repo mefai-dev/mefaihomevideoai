@@ -1,0 +1,48 @@
+# -------- secrets --------
+.env
+.env.*
+!.env.example
+
+# -------- python --------
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# -------- node --------
+node_modules/
+.npm/
+.pnpm-store/
+.vite/
+dist-ssr/
+
+# -------- editors / os --------
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# -------- logs / runtime --------
+*.log
+logs/
+data/media/
+data/tmp/
+tmp/
+
+# -------- model weights --------
+*.safetensors
+*.ckpt
+*.bin
+models/
+

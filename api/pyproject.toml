@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "superbcs-api"
+version = "0.1.0"
+description = "Pull-based image-generation API powering the SUPER BCS terminal experience."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.119.0,<0.120",
+    "uvicorn[standard]==0.32.1",
+    "gunicorn==23.0.0",
+    "pydantic==2.10.3",
+    "pydantic-settings==2.7.0",
+    "sqlalchemy[asyncio]==2.0.36",
+    "asyncpg==0.30.0",
+    "alembic==1.14.0",
+    "python-multipart>=0.0.26,<0.1.0",
+    "httpx==0.28.1",
+    "structlog==24.4.0",
+    "slowapi==0.1.9",
+    "Pillow>=12.2.0,<13",
+    "tenacity==9.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.4",
+    "pytest-asyncio==0.24.0",
+    "pytest-cov==6.0.0",
+    "ruff==0.8.4",
+    "mypy==1.13.0",
+    "types-Pillow",
+    "anyio",
+    "testcontainers[postgres]==4.8.2",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "RUF", "ASYNC", "SIM", "PL"]
+ignore = ["S101", "PLR0913"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "PLR2004"]
+"migrations/*" = ["E501"]
+# safety.validate_video_bytes is intentionally a single, exhaustive validator
+# with many guard branches — splitting it obscures the list of checks. The
+# ffprobe invocation uses a static argv + PATH lookup by design (we do not
+# want to hard-code /usr/bin/ffprobe across OSes).
+"src/superbcs_api/services/safety.py" = ["PLR0912", "PLR0915", "S603", "S607"]
+# verify_panel_token is a guard chain; each early return encodes a distinct
+# failure mode that is clearer than a flag-based refactor.
+"src/superbcs_api/services/auth.py" = ["PLR0911"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+exclude = ["migrations/"]
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers --cov=superbcs_api --cov-fail-under=70"
+testpaths = ["tests"]
+asyncio_mode = "auto"
