@@ -73,14 +73,34 @@ def require_worker_bearer(
     _enforce_ip_allowlist(client_ip(request), settings)
 
 
-def _enforce_ip_allowlist(ip: str, settings: Settings) -> None:
+def is_ip_in_worker_allowlist(ip: str, settings: Settings) -> bool:
+    """Return True if `ip` is permitted by the worker CIDR allowlist.
+
+    Empty allowlist is treated as "no restriction" (returns True) so dev/test
+    setups and single-host deployments keep working without extra config.
+    Used from `/media/{id}` Bearer path to match `/worker/*` enforcement so
+    a leaked worker token from outside the worker network cannot also read
+    arbitrary media by UUID.
+    """
     cidrs = settings.worker_allow_cidrs
     if not cidrs:
-        return
-    addr = ip_address(ip)
+        return True
+    try:
+        addr = ip_address(ip)
+    except ValueError:
+        return False
     for cidr in cidrs:
-        if addr in ip_network(cidr, strict=False):
-            return
+        try:
+            if addr in ip_network(cidr, strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def _enforce_ip_allowlist(ip: str, settings: Settings) -> None:
+    if is_ip_in_worker_allowlist(ip, settings):
+        return
     log.warning("worker_ip_blocked", ip=ip)
     raise HTTPException(status.HTTP_403_FORBIDDEN, "worker ip not allowed")
 

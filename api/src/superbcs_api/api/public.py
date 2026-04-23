@@ -24,7 +24,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from superbcs_api.api.deps import OptionalWalletDep, RequiredWalletDep, SessionDep
 from superbcs_api.core.logging import get_logger
-from superbcs_api.core.security import client_ip, verify_turnstile
+from superbcs_api.core.security import (
+    client_ip,
+    is_ip_in_worker_allowlist,
+    verify_turnstile,
+)
 from superbcs_api.core.settings import get_settings
 from superbcs_api.db.models import Job, JobStatus, Media
 from superbcs_api.schemas.jobs import (
@@ -375,7 +379,9 @@ async def get_media(
     # Accept either a valid signed URL (exp+sig) or a worker Bearer token.
     # Signed URLs are the primary channel — emitted for every media_url in API
     # responses — so native <video> tags stream without any header trick.
-    # Worker Bearer stays as a zero-trust fallback for internal calls.
+    # Worker Bearer stays as a zero-trust fallback for internal calls, and is
+    # gated by the same CIDR allowlist as /worker/* so a leaked worker token
+    # alone cannot read arbitrary media from outside the worker network.
     authorized = False
     if exp is not None and sig is not None and _verify_media_sig(media_id, exp=exp, sig=sig):
         authorized = True
@@ -384,7 +390,9 @@ async def get_media(
         if auth_header.lower().startswith("bearer "):
             presented = auth_header.split(" ", 1)[1].strip()
             expected = get_settings().worker_token.get_secret_value()
-            if hmac.compare_digest(presented, expected):
+            if hmac.compare_digest(presented, expected) and is_ip_in_worker_allowlist(
+                client_ip(request), get_settings()
+            ):
                 authorized = True
     if not authorized:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "media not found")

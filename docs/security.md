@@ -88,9 +88,12 @@ Test: `tests/test_media_sig.py`.
 ## 7. Worker authentication · Bearer + optional CIDR allowlist
 
 **Threat:** someone discovers the `/worker/*` endpoints and tries to claim
-or complete jobs on behalf of the real worker.
+or complete jobs on behalf of the real worker — or holds a leaked worker
+token and tries to dump arbitrary media by UUID through the public `/media`
+endpoint.
 
-**Defense:** two independent checks.
+**Defense:** two independent checks, applied symmetrically to every path
+that accepts the worker Bearer.
 
 - **Bearer:** the worker presents `Authorization: Bearer <worker_token>`;
   the API compares in constant time against the secret from env.
@@ -99,6 +102,11 @@ or complete jobs on behalf of the real worker.
   dev/tests to avoid surprising local contributors. The CIDR check is built
   on the hardened `client_ip` resolver in §3, so a forged forwarded header
   cannot smuggle a request into the allowlist.
+
+The `/media/{id}` endpoint accepts the worker Bearer as a zero-trust
+fallback for internal tooling. That fallback runs the same allowlist check,
+so a token leak from outside the worker network cannot be used to walk
+media UUIDs.
 
 Test: `tests/test_worker_bearer.py`.
 

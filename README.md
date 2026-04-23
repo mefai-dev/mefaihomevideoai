@@ -112,6 +112,11 @@ cd api && pytest -q
 Integration tests cover IDOR protection, signed-media tampering, request-id
 propagation, and worker bearer-auth paths.
 
+## Security
+
+Please report vulnerabilities privately through GitHub's advisory flow — see
+[`SECURITY.md`](SECURITY.md). Do not open a public issue.
+
 ## License
 
 Apache-2.0 — see [`LICENSE`](LICENSE). Model weights (FLUX.1-schnell) carry
