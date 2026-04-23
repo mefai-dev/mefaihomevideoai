@@ -27,14 +27,51 @@ def _fake_request(
     return req
 
 
-def test_client_ip_prefers_cf_connecting_ip() -> None:
+def _with_trusted_proxy(cidr: str) -> Settings:
+    """Settings copy with forwarded-header trust enabled and proxy CIDR set."""
+    base = get_settings()
+    return Settings(
+        db_dsn=base.db_dsn,
+        worker_token=base.worker_token,
+        public_base_url=base.public_base_url,
+        env=base.env,
+        trust_forwarded_headers=True,
+        trusted_proxy_cidrs=cidr,
+    )
+
+
+def test_client_ip_ignores_forwarded_headers_by_default() -> None:
+    """Direct clients cannot forge CF-Connecting-IP to bypass rate limits."""
     req = _fake_request(cf_ip="1.2.3.4", xff="9.9.9.9, 8.8.8.8", client_host="10.0.0.1")
-    assert client_ip(req) == "1.2.3.4"
+    assert client_ip(req) == "10.0.0.1"
 
 
-def test_client_ip_falls_back_to_first_xff() -> None:
+def test_client_ip_ignores_xff_by_default() -> None:
     req = _fake_request(xff="9.9.9.9, 8.8.8.8", client_host="10.0.0.1")
-    assert client_ip(req) == "9.9.9.9"
+    assert client_ip(req) == "10.0.0.1"
+
+
+def test_client_ip_trusts_cf_when_behind_named_proxy() -> None:
+    """When explicitly enabled and peer is a trusted proxy, use CF header."""
+    trusted = _with_trusted_proxy("10.0.0.0/8")
+    req = _fake_request(cf_ip="1.2.3.4", xff="9.9.9.9", client_host="10.0.0.1")
+    with patch("superbcs_api.core.security.get_settings", return_value=trusted):
+        assert client_ip(req) == "1.2.3.4"
+
+
+def test_client_ip_trusts_xff_first_hop_when_behind_named_proxy() -> None:
+    trusted = _with_trusted_proxy("10.0.0.0/8")
+    req = _fake_request(xff="9.9.9.9, 8.8.8.8", client_host="10.0.0.1")
+    with patch("superbcs_api.core.security.get_settings", return_value=trusted):
+        assert client_ip(req) == "9.9.9.9"
+
+
+def test_client_ip_rejects_forged_header_from_untrusted_peer() -> None:
+    """Even with trust enabled, an untrusted peer's forged header is ignored."""
+    trusted = _with_trusted_proxy("10.0.0.0/8")
+    req = _fake_request(cf_ip="1.2.3.4", client_host="203.0.113.99")
+    with patch("superbcs_api.core.security.get_settings", return_value=trusted):
+        assert client_ip(req) == "203.0.113.99"
 
 
 def test_client_ip_falls_back_to_socket() -> None:
