@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     worker_token: SecretStr
     worker_ip_allowlist: str = ""
 
+    # Forwarded-header trust. When False (default) the API never reads
+    # CF-Connecting-IP / X-Forwarded-For — it uses the direct TCP peer.
+    # Enable only behind a reverse proxy you control, and list the proxy's
+    # source IPs in `trusted_proxy_cidrs`. Without both, a direct client
+    # could forge a header and bypass IP rate limiting + worker allowlist.
+    trust_forwarded_headers: bool = False
+    trusted_proxy_cidrs: str = ""
+
     # Dedicated HMAC key for signed /v/{uuid} media URLs. Kept separate from
     # worker_token so a leak of one does not compromise the other. Falls back
     # to worker_token for back-compat if the env var is unset.
@@ -70,7 +78,7 @@ class Settings(BaseSettings):
     video_duration_sec: int = 3
     video_variants: int = 2
 
-    @field_validator("worker_ip_allowlist")
+    @field_validator("worker_ip_allowlist", "trusted_proxy_cidrs")
     @classmethod
     def _validate_cidrs(cls, value: str) -> str:
         if not value:
@@ -86,6 +94,10 @@ class Settings(BaseSettings):
     @property
     def worker_allow_cidrs(self) -> list[str]:
         return [c.strip() for c in self.worker_ip_allowlist.split(",") if c.strip()]
+
+    @property
+    def trusted_proxy_cidr_list(self) -> list[str]:
+        return [c.strip() for c in self.trusted_proxy_cidrs.split(",") if c.strip()]
 
 
 @lru_cache(maxsize=1)

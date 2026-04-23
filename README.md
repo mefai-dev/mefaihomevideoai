@@ -52,15 +52,21 @@ diagram.
   rate-limit counter is keyed on `HMAC_SHA256(worker_secret, ip)` so a leaked
   database reveals nothing about who submitted what.
 - **Signed, short-lived media URLs** · generated artifacts are served behind
-  a `HMAC + expiry` signature. Replaying a URL after its window closes returns
-  `403`. IDOR across wallets is blocked separately at the query layer.
+  a `HMAC + expiry` signature. A tampered or expired URL returns `404` (same
+  shape as a miss, so there is no signing oracle). IDOR across wallets is
+  blocked separately at the query layer.
 - **Mood/detail prompt engineering** · each preset is structured as a
   ≤15-word **mood** (front-loaded for model-token weight) followed by a
   cinematography **detail** line. See
   [`docs/prompt-engineering.md`](docs/prompt-engineering.md).
-- **Layered quotas** · tiered by wallet (free / pro / prime), enforced with
-  `SELECT ... FOR UPDATE` inside the job-creation transaction so a burst of
-  concurrent submits can't silently blow past the cap.
+- **Layered quotas** · tiered by wallet (free / pro / prime), enforced by
+  counting the wallet's last 24 hours of submissions on every job-create.
+  The per-IP hourly bucket in the rate-limit layer catches burst concurrency
+  on top.
+- **Forwarded-header hardening** · `CF-Connecting-IP` / `X-Forwarded-For`
+  are only trusted when the API is explicitly configured to sit behind a
+  named proxy. Direct clients cannot forge a header to bypass IP rate
+  limiting or the worker CIDR allowlist.
 
 ## Repo layout
 

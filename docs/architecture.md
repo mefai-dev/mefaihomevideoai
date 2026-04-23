@@ -31,7 +31,7 @@ sequenceDiagram
     T-->>A: ok
     A->>P: GET /profile/me  (passthrough)
     P-->>A: wallet info
-    A->>D: INSERT job (queued) · quota FOR UPDATE
+    A->>D: read 24h wallet count · INSERT job (queued)
     A-->>U: 202 {job_id}
     loop every 2s
         U->>A: GET /jobs/{id}

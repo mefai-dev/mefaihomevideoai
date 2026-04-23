@@ -84,6 +84,12 @@ def create_app() -> FastAPI:
         response.headers[settings.request_id_header] = rid
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
+        # Defense-in-depth: belt-and-braces even when the edge proxy sets it.
+        if settings.env == "production":
+            response.headers.setdefault(
+                "Strict-Transport-Security",
+                "max-age=63072000; includeSubDomains",
+            )
         return response
 
     def _rid(request: Request) -> str:

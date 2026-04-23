@@ -19,21 +19,44 @@ _TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteveri
 def client_ip(request: Request) -> str:
     """Resolve trusted client IP.
 
-    Prefers `CF-Connecting-IP` (Cloudflare-set, cannot be forged by the
-    caller when traffic comes through CF edge). Falls back to the first
-    entry of X-Forwarded-For (nginx-trusted), then to the raw socket
-    address. This ordering prevents IP-allowlist bypass via a forged
-    X-Forwarded-For header.
+    Forwarded headers (`CF-Connecting-IP`, `X-Forwarded-For`) are only trusted
+    when `SUPERBCS_TRUST_FORWARDED_HEADERS=true` is explicitly set AND the
+    direct TCP peer is inside `SUPERBCS_TRUSTED_PROXY_CIDRS`. This fails
+    closed: if the API is reachable directly (no reverse proxy in front),
+    a forged `CF-Connecting-IP` cannot bypass IP-based rate limiting or the
+    worker CIDR allowlist.
     """
-    cf = request.headers.get("cf-connecting-ip")
-    if cf:
-        return cf.strip()
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    if request.client is None:
+    settings = get_settings()
+    peer = request.client.host if request.client is not None else None
+
+    if settings.trust_forwarded_headers and peer and _peer_is_trusted(peer, settings):
+        cf = request.headers.get("cf-connecting-ip")
+        if cf:
+            return cf.strip()
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+
+    if peer is None:
         return "0.0.0.0"  # noqa: S104 — sentinel only, never bound to.
-    return request.client.host
+    return peer
+
+
+def _peer_is_trusted(peer: str, settings: Settings) -> bool:
+    cidrs = settings.trusted_proxy_cidr_list
+    if not cidrs:
+        return False
+    try:
+        addr = ip_address(peer)
+    except ValueError:
+        return False
+    for cidr in cidrs:
+        try:
+            if addr in ip_network(cidr, strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
 
 
 def require_worker_bearer(

@@ -52,7 +52,6 @@ def _media_url(media_id: UUID | None) -> str | None:
 async def claim(
     request: Request,
     session: Annotated[AsyncSession, SessionDep],
-    x_worker_id: Annotated[str | None, "header"] = None,
 ) -> Response:
     settings = get_settings()
     worker_id = request.headers.get("x-worker-id") or "anonymous"
