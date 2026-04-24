@@ -47,14 +47,21 @@ class Settings(BaseSettings):
     trusted_proxy_cidrs: str = ""
 
     # Dedicated HMAC key for signed /v/{uuid} media URLs. Kept separate from
-    # worker_token so a leak of one does not compromise the other. Falls back
-    # to worker_token for back-compat if the env var is unset.
+    # worker_token so a leak of one does not compromise the other. Required
+    # in production; dev/staging may leave it empty to fall back to
+    # worker_token for local-run convenience.
     media_signing_key: SecretStr = SecretStr("")
 
     @property
     def media_hmac_key(self) -> bytes:
         key = self.media_signing_key.get_secret_value()
         if not key:
+            if self.env == "production":
+                raise RuntimeError(
+                    "SUPERBCS_MEDIA_SIGNING_KEY is required in production. "
+                    "Generate a dedicated key (e.g. `openssl rand -hex 32`); "
+                    "do not reuse worker_token."
+                )
             key = self.worker_token.get_secret_value()
         return key.encode()
 

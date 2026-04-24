@@ -57,10 +57,11 @@ _MEDIA_SIG_TTL_SEC = 24 * 60 * 60  # 24h — generous for renders, cache-friendl
 def _sign_media(media_id: UUID, *, exp: int) -> str:
     """Deterministic HMAC over (media_id, exp). Truncated to 128 bits.
 
-    Uses a dedicated `media_signing_key` (falls back to worker_token if the
-    dedicated key is unset, for back-compat). Separating these keys means a
-    leak of the worker bearer does not automatically let an attacker mint
-    signed media URLs, and vice versa.
+    Uses a dedicated `media_signing_key`. Production requires the key to be
+    set explicitly; dev/staging falls back to worker_token for local-run
+    convenience. Separating these keys means a leak of the worker bearer
+    does not automatically let an attacker mint signed media URLs, and vice
+    versa.
     """
     key = get_settings().media_hmac_key
     msg = _MEDIA_SIG_LABEL + b":" + str(media_id).encode() + b":" + str(exp).encode()
