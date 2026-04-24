@@ -930,7 +930,7 @@ export function SuperBCSPage({ onLoginClick }: Props) {
                   <span className={`sbcs-stage-dot ${['queued','claimed','running','done'].includes(phase) ? 'on' : ''}`}>queued</span>
                   <span className={`sbcs-stage-dot ${['claimed','running','done'].includes(phase) ? 'on' : ''}`}>claimed</span>
                   <span className={`sbcs-stage-dot ${['running','done'].includes(phase) ? 'on' : ''}`}>running</span>
-                  <span className={`sbcs-stage-dot ${phase === 'done' ? 'on' : ''}`}>done</span>
+                  <span className="sbcs-stage-dot">done</span>
                 </div>
               </div>
             )}
