@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from superbcs_api.core.logging import get_logger
+from superbcs_api.core.logging import get_logger, redact_wallet
 from superbcs_api.core.settings import get_settings
 
 log = get_logger(__name__)
@@ -77,11 +77,11 @@ async def get_tier_for_wallet(wallet: str) -> TierInfo:
         async with httpx.AsyncClient(timeout=settings.panel_request_timeout_sec) as client:
             resp = await client.get(url)
     except httpx.HTTPError as exc:
-        log.warning("panel_tier_network_error", error=str(exc), wallet=wallet_key)
+        log.warning("panel_tier_network_error", error=str(exc), wallet=redact_wallet(wallet_key))
         return TierInfo(tier=Tier.FREE, source="default")
 
     if resp.status_code != _HTTP_OK:
-        log.info("panel_tier_non_200", status=resp.status_code, wallet=wallet_key)
+        log.info("panel_tier_non_200", status=resp.status_code, wallet=redact_wallet(wallet_key))
         return TierInfo(tier=Tier.FREE, source="default")
 
     try:

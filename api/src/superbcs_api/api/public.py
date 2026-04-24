@@ -23,7 +23,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from superbcs_api.api.deps import OptionalWalletDep, RequiredWalletDep, SessionDep
-from superbcs_api.core.logging import get_logger
+from superbcs_api.core.logging import get_logger, redact_wallet
 from superbcs_api.core.security import (
     client_ip,
     is_ip_in_worker_allowlist,
@@ -222,7 +222,7 @@ async def submit_job(
         queue_position=pos,
         motion=motion_preset,
         tier=tier_info.tier.value,
-        wallet=wallet_session.wallet if wallet_session else None,
+        wallet=redact_wallet(wallet_session.wallet) if wallet_session else None,
     )
     return JobCreated(
         job_id=job.id,
@@ -278,7 +278,7 @@ async def delete_job(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "not your job")
     job.deleted_at = datetime.now(UTC)
     await session.commit()
-    log.info("job_deleted", job_id=str(job.id), wallet=wallet_session.wallet)
+    log.info("job_deleted", job_id=str(job.id), wallet=redact_wallet(wallet_session.wallet))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

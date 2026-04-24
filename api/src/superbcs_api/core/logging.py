@@ -20,6 +20,24 @@ def _redact_processor(_: WrappedLogger, __: str, event_dict: EventDict) -> Event
     return event_dict
 
 
+_WALLET_MIN_LEN_FOR_REDACTION = 12  # 0x + 6 prefix + 4 suffix minimum
+
+
+def redact_wallet(wallet: str | None) -> str | None:
+    """Shorten a 0x… wallet for log output: `0x1234…cdef`.
+
+    Full wallet addresses are on-chain public, but correlating them with
+    submission timestamps in logs is a deanonymisation vector. Logs keep
+    a prefix/suffix that is enough to cross-reference against an explorer
+    when debugging without broadcasting the whole identifier.
+    """
+    if wallet is None:
+        return None
+    if len(wallet) < _WALLET_MIN_LEN_FOR_REDACTION or not wallet.startswith("0x"):
+        return wallet
+    return f"{wallet[:6]}…{wallet[-4:]}"
+
+
 def configure_logging(*, debug: bool = False) -> None:
     level = logging.DEBUG if debug else logging.INFO
     logging.basicConfig(stream=sys.stdout, format="%(message)s", level=level)

@@ -112,6 +112,16 @@ cd api && pytest -q
 Integration tests cover IDOR protection, signed-media tampering, request-id
 propagation, and worker bearer-auth paths.
 
+## Deployment assumptions
+
+This codebase is built to sit behind an edge proxy that absorbs L3/L4
+traffic and terminates TLS (the reference deployment uses Cloudflare).
+Self-hosted deployments that expose the API directly to the public
+internet are responsible for providing their own DDoS protection,
+network-level rate limiting, and TLS. The application-layer defences
+listed above are complementary to — not a replacement for — an edge
+tier.
+
 ## Security
 
 Please report vulnerabilities privately through GitHub's advisory flow — see

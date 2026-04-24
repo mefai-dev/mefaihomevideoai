@@ -83,6 +83,13 @@ stops working after its window closes. A tampered signature (or a missing
 `sig`/`exp`) returns `404`, matching the shape of a miss so there is no
 signing oracle.
 
+**Key separation:** `SUPERBCS_MEDIA_SIGNING_KEY` is a distinct secret from
+the worker bearer. If it is left unset, the API falls back to
+`SUPERBCS_WORKER_TOKEN` so the service still boots in a single-secret
+dev setup. Production deployments **should** configure a dedicated media
+signing key so that a leaked worker token cannot be used to forge media
+URLs, and so that rotating one key does not invalidate the other.
+
 Test: `tests/test_media_sig.py`.
 
 ## 7. Worker authentication · Bearer + optional CIDR allowlist

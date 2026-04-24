@@ -48,7 +48,9 @@ def read_media(relative_path: str) -> bytes:
     settings = get_settings()
     abs_path = (settings.media_dir / relative_path).resolve()
     media_root = settings.media_dir.resolve()
-    # Path-traversal guard.
-    if not str(abs_path).startswith(str(media_root) + "/"):
+    # Path-traversal guard. `is_relative_to` does proper path algebra so a
+    # sibling directory that shares a prefix (e.g. `<root>-other`) cannot
+    # slip past a naive string startswith check.
+    if not abs_path.is_relative_to(media_root):
         raise PermissionError("path traversal blocked")
     return abs_path.read_bytes()
